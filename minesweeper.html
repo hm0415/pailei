@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>扫雷 — 暗黑科技版</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0f;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Consolas', 'Courier New', 'Monaco', monospace;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+
+  /* 背景动态网格线 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,255,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridScroll 8s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  @keyframes gridScroll {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 0 40px, 40px 0; }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+
+  /* 标题 */
+  .title {
+    font-size: 28px;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: #00fff7;
+    text-shadow: 0 0 12px #00fff7, 0 0 40px rgba(0,255,247,.3);
+  }
+
+  /* 顶栏：计时 + 重开 */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    width: 100%;
+    max-width: 400px;
+    justify-content: space-between;
+  }
+
+  .timer-box {
+    background: #111118;
+    border: 1px solid #2a2a3a;
+    border-radius: 6px;
+    padding: 10px 22px;
+    color: #ff6ec7;
+    font-size: 22px;
+    letter-spacing: 3px;
+    text-shadow: 0 0 8px #ff6ec7;
+    box-shadow: 0 0 12px rgba(255,110,199,.15), inset 0 0 8px rgba(255,110,199,.05);
+    min-width: 100px;
+    text-align: center;
+  }
+
+  .btn-restart {
+    background: transparent;
+    border: 1px solid #00fff7;
+    color: #00fff7;
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all .25s ease;
+    text-shadow: 0 0 6px rgba(0,255,247,.6);
+    box-shadow: 0 0 10px rgba(0,255,247,.1);
+  }
+
+  .btn-restart:hover {
+    background: rgba(0,255,247,.1);
+    box-shadow: 0 0 20px rgba(0,255,247,.25), inset 0 0 10px rgba(0,255,247,.08);
+  }
+
+  .btn-restart:active {
+    background: rgba(0,255,247,.18);
+    transform: scale(.96);
+  }
+
+  /* 网格容器 */
+  .grid-wrapper {
+    position: relative;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(9, 42px);
+    grid-template-rows: repeat(9, 42px);
+    gap: 3px;
+    padding: 16px;
+    background: #111118;
+    border: 1px solid #2a2a3a;
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(0,255,247,.08), 0 0 60px rgba(0,0,0,.6);
+  }
+
+  .cell {
+    width: 42px;
+    height: 42px;
+    background: #181822;
+    border: 1px solid #2e2e3e;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: bold;
+    transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+    position: relative;
+  }
+
+  .cell:hover:not(.revealed) {
+    background: #222233;
+    border-color: #00fff7;
+    box-shadow: 0 0 10px rgba(0,255,247,.2), inset 0 0 6px rgba(0,255,247,.05);
+  }
+
+  .cell:active:not(.revealed) {
+    transform: scale(.93);
+    transition: transform .06s ease;
+  }
+
+  /* 已揭开 */
+  .cell.revealed {
+    background: #0d0d15;
+    cursor: default;
+    border-color: #1e1e2e;
+  }
+
+  .cell.revealed:hover {
+    background: #0d0d15;
+    border-color: #1e1e2e;
+    box-shadow: none;
+  }
+
+  /* 雷 */
+  .cell.mine {
+    background: #2a0a10 !important;
+    border-color: #ff3366 !important;
+    box-shadow: 0 0 16px rgba(255,51,102,.5), inset 0 0 10px rgba(255,51,102,.15) !important;
+  }
+
+  /* 数字颜色 */
+  .cell.n1  { color: #00d4ff; text-shadow: 0 0 8px rgba(0,212,255,.8); }
+  .cell.n2  { color: #00ff88; text-shadow: 0 0 8px rgba(0,255,136,.8); }
+  .cell.n3  { color: #ff6ec7; text-shadow: 0 0 8px rgba(255,110,199,.8); }
+  .cell.n4  { color: #ae7ef7; text-shadow: 0 0 8px rgba(174,126,247,.8); }
+  .cell.n5  { color: #ff9944; text-shadow: 0 0 8px rgba(255,153,68,.8); }
+  .cell.n6  { color: #44ddff; text-shadow: 0 0 8px rgba(68,221,255,.8); }
+  .cell.n7  { color: #ff5577; text-shadow: 0 0 8px rgba(255,85,119,.8); }
+  .cell.n8  { color: #ccc;     text-shadow: 0 0 8px rgba(204,204,204,.8); }
+
+  /* 覆盖层 */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(6,6,14,.88);
+    backdrop-filter: blur(4px);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .5s ease;
+    z-index: 10;
+  }
+
+  .overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .overlay-text {
+    font-size: 26px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .overlay-text.win  { color: #00ff88; text-shadow: 0 0 14px #00ff88, 0 0 40px rgba(0,255,136,.3); }
+  .overlay-text.lose { color: #ff3366; text-shadow: 0 0 14px #ff3366, 0 0 40px rgba(255,51,102,.3); }
+
+  .btn-overlay {
+    background: transparent;
+    border: 1px solid #00fff7;
+    color: #00fff7;
+    font-family: inherit;
+    font-size: 16px;
+    letter-spacing: 3px;
+    padding: 12px 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(0,255,247,.6);
+    box-shadow: 0 0 14px rgba(0,255,247,.12);
+    transition: all .25s ease;
+  }
+
+  .btn-overlay:hover {
+    background: rgba(0,255,247,.12);
+    box-shadow: 0 0 24px rgba(0,255,247,.3), inset 0 0 12px rgba(0,255,247,.08);
+  }
+
+  .btn-overlay:active { transform: scale(.95); }
+
+  /* 左下角装饰 */
+  .decor {
+    position: fixed;
+    bottom: 20px;
+    left: 30px;
+    color: rgba(0,255,247,.15);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 2px;
+    pointer-events: none;
+    z-index: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="title">M I N E S W E E P E R</div>
+
+  <div class="top-bar">
+    <div class="timer-box" id="timer">000</div>
+    <button class="btn-restart" id="btnRestartTop">重 开</button>
+  </div>
+
+  <div class="grid-wrapper">
+    <div class="grid" id="grid"></div>
+    <div class="overlay" id="overlay">
+      <div class="overlay-text" id="overlayText"></div>
+      <button class="btn-overlay" id="btnOverlayRestart">再 来 一 局</button>
+    </div>
+  </div>
+</div>
+
+<div class="decor">// SYS: GRID_9x9_MINES_10 // MODE: NO_FLAG_SCAN_ONLY //</div>
+
+<script>
+(() => {
+  const ROWS = 9, COLS = 9, MINES = 10;
+
+  const gridEl   = document.getElementById('grid');
+  const timerEl  = document.getElementById('timer');
+  const overlay  = document.getElementById('overlay');
+  const overlayText = document.getElementById('overlayText');
+  const btnTop   = document.getElementById('btnRestartTop');
+  const btnOver  = document.getElementById('btnOverlayRestart');
+
+  let board = [];
+  let timerInterval = null;
+  let seconds = 0;
+  let gameStarted = false;
+  let gameOver = false;
+  let remainingCells = ROWS * COLS - MINES;
+
+  // ==================== 音效引擎 (Web Audio API) ====================
+  let audioCtx = null;
+
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playNumberClick() {
+    try {
+      const ctx = getAudioCtx();
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1200, t);
+      osc.frequency.exponentialRampToValueAtTime(600, t + 0.06);
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    } catch (_) {}
+  }
+
+  function playBoom() {
+    try {
+      const ctx = getAudioCtx();
+      const t = ctx.currentTime;
+
+      // 低频震荡——爆音主体
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(80, t);
+      osc.frequency.exponentialRampToValueAtTime(20, t + 0.5);
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.55);
+
+      // 噪声层——碎裂感
+      const bufferSize = ctx.sampleRate * 0.4;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+      const noise = ctx.createBufferSource();
+      const noiseGain = ctx.createGain();
+      noise.buffer = buffer;
+      noiseGain.gain.setValueAtTime(0.25, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      noise.connect(noiseGain).connect(ctx.destination);
+      noise.start(t);
+      noise.stop(t + 0.4);
+    } catch (_) {}
+  }
+
+  function playBlankReveal() {
+    try {
+      const ctx = getAudioCtx();
+      const t = ctx.currentTime;
+      // 轻柔上升音——空白区域展开
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, t);
+      osc.frequency.exponentialRampToValueAtTime(900, t + 0.15);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    } catch (_) {}
+  }
+
+  // ==================== 棋盘逻辑 ====================
+
+  function initBoard() {
+    board = Array.from({ length: ROWS }, () =>
+      Array.from({ length: COLS }, () => ({ mine: false, revealed: false, adjacent: 0 }))
+    );
+
+    let placed = 0;
+    while (placed < MINES) {
+      const r = Math.floor(Math.random() * ROWS);
+      const c = Math.floor(Math.random() * COLS);
+      if (!board[r][c].mine) {
+        board[r][c].mine = true;
+        placed++;
+      }
+    }
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (board[r][c].mine) continue;
+        let count = 0;
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc].mine) count++;
+          }
+        }
+        board[r][c].adjacent = count;
+      }
+    }
+  }
+
+  function renderGrid() {
+    gridEl.innerHTML = '';
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+
+        if (board[r][c].revealed) {
+          cell.classList.add('revealed');
+          if (board[r][c].mine) {
+            cell.classList.add('mine');
+            cell.textContent = '✱';
+          } else {
+            const adj = board[r][c].adjacent;
+            if (adj > 0) {
+              cell.classList.add('n' + adj);
+              cell.textContent = adj;
+            }
+          }
+        }
+
+        cell.addEventListener('click', () => onCellClick(r, c));
+        gridEl.appendChild(cell);
+      }
+    }
+  }
+
+  function getCellEl(r, c) {
+    return gridEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+  }
+
+  function revealCell(r, c) {
+    if (board[r][c].revealed) return;
+    board[r][c].revealed = true;
+    const el = getCellEl(r, c);
+    if (!el) return;
+
+    el.classList.add('revealed');
+    remainingCells--;
+
+    if (board[r][c].mine) {
+      el.classList.add('mine');
+      el.textContent = '✱';
+    } else {
+      const adj = board[r][c].adjacent;
+      if (adj > 0) {
+        el.classList.add('n' + adj);
+        el.textContent = adj;
+      }
+    }
+  }
+
+  function revealAllMines() {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (board[r][c].mine && !board[r][c].revealed) {
+          board[r][c].revealed = true;
+          const el = getCellEl(r, c);
+          if (el) {
+            el.classList.add('revealed', 'mine');
+            el.textContent = '✱';
+          }
+        }
+      }
+    }
+  }
+
+  // --- 泛洪展开：点击空白格时自动揭开周围连续空白区域 ---
+  function floodFill(startR, startC) {
+    const queue = [[startR, startC]];
+    const visited = new Set();
+    visited.add(startR * COLS + startC);
+
+    while (queue.length > 0) {
+      const [r, c] = queue.shift();
+
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr, nc = c + dc;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+          if (board[nr][nc].revealed || board[nr][nc].mine) continue;
+
+          const key = nr * COLS + nc;
+          if (visited.has(key)) continue;
+          visited.add(key);
+
+          revealCell(nr, nc);
+          if (board[nr][nc].adjacent === 0) {
+            queue.push([nr, nc]);
+          }
+        }
+      }
+    }
+  }
+
+  // ==================== 交互逻辑 ====================
+
+  function onCellClick(r, c) {
+    if (gameOver) return;
+    if (board[r][c].revealed) return;
+
+    if (!gameStarted) {
+      gameStarted = true;
+      startTimer();
+    }
+
+    if (board[r][c].mine) {
+      revealCell(r, c);
+      revealAllMines();
+      playBoom();
+      endGame(false);
+      return;
+    }
+
+    revealCell(r, c);
+
+    if (board[r][c].adjacent === 0) {
+      playBlankReveal();
+      floodFill(r, c);
+    } else {
+      playNumberClick();
+    }
+
+    if (remainingCells <= 0) {
+      endGame(true);
+    }
+  }
+
+  // ==================== 计时器 ====================
+
+  function startTimer() {
+    seconds = 0;
+    updateTimerDisplay();
+    timerInterval = setInterval(() => {
+      seconds++;
+      updateTimerDisplay();
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  function updateTimerDisplay() {
+    timerEl.textContent = String(seconds).padStart(3, '0');
+  }
+
+  function endGame(won) {
+    gameOver = true;
+    stopTimer();
+
+    overlayText.textContent = won ? '你 赢 了 ！' : '你 踩 到 雷 了 ！';
+    overlayText.className = 'overlay-text ' + (won ? 'win' : 'lose');
+    overlay.classList.add('active');
+  }
+
+  function resetGame() {
+    stopTimer();
+    seconds = 0;
+    gameStarted = false;
+    gameOver = false;
+    remainingCells = ROWS * COLS - MINES;
+    updateTimerDisplay();
+    overlay.classList.remove('active');
+    initBoard();
+    renderGrid();
+  }
+
+  btnTop.addEventListener('click', resetGame);
+  btnOver.addEventListener('click', resetGame);
+
+  initBoard();
+  renderGrid();
+})();
+</script>
+</body>
+</html>
